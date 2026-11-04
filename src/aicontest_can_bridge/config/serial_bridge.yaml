@@ -1,0 +1,20 @@
+# aicontest_can_bridge の UART 版(serial_bridge)の設定(docs/can_protocol.md v0.4 の「UART」)
+/**:
+  ros__parameters:
+    port: "/dev/nucleo"            # Nucleo の USB(ST-LINK の仮想シリアル)。tools/setup_pi5.sh の udev で /dev/nucleo を作る(なければ /dev/ttyACM0)
+    baud: 460800                   # ファームウェア app.c の PI_LINK_BAUD と合わせる
+    # 駆動輪 0〜3 の並び(Nucleo 側で C610 ID1〜4 に対応させる)
+    drive_wheel_names: ["mecanum_fl", "mecanum_fr", "mecanum_rl", "mecanum_rr"]
+    # 計測輪 0(前後向き)/ 1(横向き)の並び
+    odom_wheel_names: ["odom_wheel_l", "odom_wheel_s"]
+    # 回転方向が逆の車輪は -1.0 にする(ファームウェアを書き直さずに直せる)
+    drive_wheel_directions: [1.0, 1.0, 1.0, 1.0]
+    odom_wheel_directions: [1.0, 1.0]
+    # 計測輪1回転あたりのカウント(エンコーダの PPR × 4)。position(デバッグ用)にだけ使う
+    odom_counts_per_rev: [1440.0, 1440.0]  # E6B2-CWZ6C 360 P/R × 4
+    # IMU(BMX055)。左に回して /imu の angular_velocity.z が正にならなければ -1.0
+    imu_sign: 1.0
+    imu_frame_id: "base_link"
+    command_timeout_sec: 0.5       # 指令がこれ以上来なければ 0 を送る
+    tx_rate_hz: 100.0
+    stats_period_sec: 10.0         # 受信・送信の統計をログに出す間隔(0 で出さない)

@@ -1,0 +1,12 @@
+# A* 経路計画(natto_astar_planner)
+# xy_inflation: ロボットの中心が障害物からこの距離には絶対入らない
+# xy_offset: さらに外側の「できるだけ入りたくない」範囲。広いと、椅子の入口のような狭い所で
+#            経路が脚の列から押し出されて輪のようにふくらむ(シミュレーションで確認)ので狭くした。
+#            脚との余白は footprint.yaml(外形を各辺 1cm 大きく)、クレーターとの余白は course.yaml の crater_margin でとる
+# grad_alpha: 経路をなめらかにするときに障害物から押し離す強さ(既定 1.0)。同じ理由で弱くした
+/**:
+  ros__parameters:
+    theta_resolution_deg: 2    # natto の経路は向きが「刻みの半分」ずれる(0°指定でも 15°刻みだと 7.5°)。細かくしてずれを 1° に抑える
+    xy_inflation: 0.12
+    xy_offset: 0.05
+    grad_alpha: 0.3

@@ -1,0 +1,96 @@
+<!--
+  実機: RPLIDAR A1 + 計測輪オドメトリ
+    ros2 launch aicontest_rover real.launch.xml
+    ros2 launch aicontest_rover real.launch.xml lidar_port:=/dev/ttyUSB0   # /dev/rplidar を作っていないとき
+  RViz は起動しない。開発PC(同じ ROS_DOMAIN_ID)で ros2 launch aicontest_rover monitor.launch.xml
+
+  Nucleo との通信は aicontest_can_bridge の serial_bridge(Nucleo の USB ⇔ /command_joint_states, /joint_states, /imu)。
+  CAN でつなぐときは nucleo_link:=can(事前に sudo ip link set can0 up type can bitrate 1000000、ファームウェアも PI_LINK_CAN)
+
+  スタート位置は config/map/course.yaml の start(MCL の初期位置になる)。毎回、置いた位置を書いてから
+  ros2 run aicontest_rover make_map.py を実行する。計測輪2つなら odom_wheels:=2lr / 2fs。
+-->
+<launch>
+    <arg name="chassis_type" default="omni"/>
+    <arg name="initial_allow_auto_drive" default="false"/>
+    <!-- set_pose は1回しか送られないので、自己位置が出る前に届くと経路が作られないまま止まる。タイムアウトしたら送り直す -->
+    <arg name="retry_action_on_timeout" default="true"/>
+    <arg name="launch_simulation" default="false"/>
+    <arg name="launch_localization" default="false"/>
+    <arg name="odom_wheels" default="2fs"/>
+    <!-- 既定は計測輪2つ(前後1 + 横1)+ IMU。計測輪3つなら odom_wheels:=3 use_imu:=false -->
+    <arg name="use_imu" default="true"/>
+    <arg name="occupancy_grid_resolution" default="0.02"/>
+    <arg name="merged_lidar_publish_frequency" default="10.0"/>
+    <!-- passthrough: スキャンが届いたらすぐ1回だけ流す(merge だと最新の点群を一定周期で出し直すので、古いスキャンが何度も使われ遅れも増える) -->
+    <arg name="merged_lidar_mode" default="passthrough"/>
+    <arg name="use_ransac" default="false"/>
+    <arg name="controller_max_xy_speed_m_s" default="0.5"/>
+    <arg name="controller_max_yaw_speed_rad_s" default="1.5"/>
+    <arg name="lidar_port" default="/dev/rplidar"/>
+    <!-- 走行中の Pi の CPU を空けるため既定では RViz を起動しない。開発PCで monitor.launch.xml を起動して見る(Pi に画面があれば :=true でもよい) -->
+    <arg name="launch_visualization" default="false"/>
+    <arg name="nucleo_link" default="uart"/>
+    <arg name="nucleo_port" default="/dev/nucleo"/>
+    <arg name="can_interface" default="can0"/>
+
+    <arg name="pkg" default="$(find-pkg-share aicontest_rover)"/>
+    <arg name="tools" default="$(find-pkg-prefix aicontest_rover)/lib/aicontest_rover"/>
+    <!-- 配置(スタート位置・椅子)。scan_chairs.py で別のファイルに書き出したときは course_path:=そのファイル -->
+    <arg name="course_path" default="$(var pkg)/config/map/course.yaml"/>
+    <arg name="start_x" default="$(command '$(var tools)/course_value.py $(var course_path) start.x')"/>
+    <arg name="start_y" default="$(command '$(var tools)/course_value.py $(var course_path) start.y')"/>
+    <arg name="start_yaw_deg" default="$(command '$(var tools)/course_value.py $(var course_path) start.yaw 0')"/>
+    <arg name="urdf_path" default="$(var pkg)/urdf/rover.urdf.xacro"/>
+    <arg name="chassis_param_path" default="$(var pkg)/config/chassis/mecanum.yaml"/>
+    <arg name="simulation_param_path" default="$(var pkg)/config/chassis/mecanum_simulation.yaml"/>
+    <arg name="line_segments_path" default="$(var pkg)/config/map/line_segments.csv"/>
+    <arg name="circles_path" default="$(var pkg)/config/map/circles.csv"/>
+    <arg name="footprint_param_path" default="$(var pkg)/config/footprint.yaml"/>
+    <arg name="lidar_param_path" default="$(var pkg)/config/lidar.yaml"/>
+    <arg name="localization_param_path" default="$(var pkg)/config/localization_real.yaml"/>
+    <arg name="planning_param_path" default="$(var pkg)/config/planning.yaml"/>
+    <arg name="control_param_path" default="$(var pkg)/config/control.yaml"/>
+    <arg name="controller_param_path" default="$(var pkg)/config/controller.yaml"/>
+    <arg name="joint_rule_path" default="$(var pkg)/config/joint_rule.yaml"/>
+    <arg name="state_graph_path" default="$(var pkg)/state_graph/course.md"/>
+
+    <!-- 1つ目は zone_speed_limiter.py が椅子の周りで速度を落とした後の指令 -->
+    <arg name="joint_state_topics" default="['/$(var chassis_type)/command_joint_states_limited', '/controller/joint_states', '/behavior/command_joint_states']"/>
+
+    <!-- RPLIDAR A1 → natto の sensing が読むトピック・フレームに合わせる -->
+    <!-- lidar_angle_compensate: true なら 1° ごとの決まった角度に丸めて出す(これまでどおり)。
+         false なら測った角度のまま(回るたびに少しずつずれる)。scan_chairs.py で遠くの細い脚を見つけるときは false がよい
+         (決まった角度だと、遠くの脚がいつも点と点のすき間に入ることがある。シミュレーションの LiDAR は決まった角度で、8脚中 1〜4脚しか見つからなかった) -->
+    <arg name="lidar_angle_compensate" default="true"/>
+    <node pkg="rplidar_ros" exec="rplidar_composition" name="rplidar_node" output="screen">
+        <param name="serial_port" value="$(var lidar_port)"/>
+        <param name="serial_baudrate" value="115200"/>
+        <param name="frame_id" value="lidar_front"/>
+        <param name="angle_compensate" value="$(var lidar_angle_compensate)"/>
+        <remap from="scan" to="/sensing/lidar/laserscan/front"/>
+    </node>
+
+    <!-- Pi ⇔ Nucleo の変換(docs/can_protocol.md)。nucleo_link: uart(既定、Nucleo の USB)/ can(Pi も CAN バスに) -->
+    <!-- ファームウェア app.c の PI_LINK と合わせる -->
+    <include file="$(find-pkg-share aicontest_can_bridge)/launch/serial_bridge.launch.xml" if="$(eval '\'$(var nucleo_link)\' == \'uart\'')">
+        <arg name="port" value="$(var nucleo_port)"/>
+    </include>
+    <include file="$(find-pkg-share aicontest_can_bridge)/launch/can_bridge.launch.xml" if="$(eval '\'$(var nucleo_link)\' == \'can\'')">
+        <arg name="can_interface" value="$(var can_interface)"/>
+    </include>
+
+    <!-- 自己位置推定(スタート位置を初期位置に) -->
+    <include file="$(var pkg)/launch/localization.launch.xml">
+        <arg name="localization_param_path" value="$(var localization_param_path)"/>
+        <arg name="chassis_param_path" value="$(var chassis_param_path)"/>
+        <arg name="start_x" value="$(var start_x)"/>
+        <arg name="start_y" value="$(var start_y)"/>
+        <arg name="start_yaw_deg" value="$(var start_yaw_deg)"/>
+        <arg name="odom_wheels" value="$(var odom_wheels)"/>
+        <arg name="use_imu" value="$(var use_imu)"/>
+        <arg name="course_path" value="$(var course_path)"/>
+    </include>
+
+    <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml"/>
+</launch>

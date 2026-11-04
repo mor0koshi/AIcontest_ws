@@ -1,0 +1,17 @@
+<!--
+  変換ノード単体の起動
+    ros2 launch aicontest_can_bridge can_bridge.launch.xml                       # 実機(can0)
+    ros2 launch aicontest_can_bridge can_bridge.launch.xml can_interface:=vcan0  # PC でのテスト
+-->
+<launch>
+    <arg name="can_interface" default="can0"/>
+    <arg name="param_path" default="$(find-pkg-share aicontest_can_bridge)/config/can_bridge.yaml"/>
+
+    <node pkg="aicontest_can_bridge" exec="can_bridge_node" name="can_bridge" output="screen">
+        <param from="$(var param_path)"/>
+        <param name="can_interface" value="$(var can_interface)"/>
+        <remap from="command_joint_states" to="/command_joint_states"/>
+        <remap from="joint_states" to="/joint_states"/>
+        <remap from="imu" to="/imu"/>
+    </node>
+</launch>

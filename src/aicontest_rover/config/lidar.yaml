@@ -1,0 +1,9 @@
+# RPLIDAR A1 1台。urdf の lidar_front と位置を合わせる
+# frequency / point_rate はシミュレーター用(A1 Standard: 約7Hz、2000点/秒)
+name: ["front"]
+x: [0.0]
+y: [0.0]
+z: [0.12]
+yaw_deg: [0.0]
+frequency: [7.0]
+point_rate: [2000]

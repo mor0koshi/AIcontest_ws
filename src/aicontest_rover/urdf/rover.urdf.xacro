@@ -1,0 +1,113 @@
+<?xml version="1.0"?>
+<!--
+  コンテスト用ローバー(メカナム4輪 + 計測輪3つ + RPLIDAR A1)
+  寸法は仮の値。決まったらこのファイル上部の property と、
+  config/chassis/mecanum.yaml の wheel_radius(= メカナム半径 / √2)、
+  config/footprint.yaml、config/lidar.yaml、config/localization_real.yaml を合わせて直す。
+-->
+<robot name="aicontest_rover" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- ==================== 寸法(仮) ==================== -->
+  <xacro:property name="body_x"          value="0.18"/>   <!-- 奥行き 180mm(決定) -->
+  <xacro:property name="body_y"          value="0.20"/>   <!-- 幅 200mm(決定) -->
+  <xacro:property name="mecanum_radius"  value="0.03"/>   <!-- メカナム 直径60mm -->
+  <xacro:property name="mecanum_width"   value="0.03"/>
+  <xacro:property name="wheel_x"         value="0.06"/>   <!-- 前後の車輪間隔 120mm の半分(仮) -->
+  <xacro:property name="wheel_y"         value="0.085"/>  <!-- 左右の車輪間隔 170mm の半分(仮) -->
+  <xacro:property name="odom_radius"     value="0.024"/>  <!-- 計測輪 直径48mm(仮) -->
+  <xacro:property name="odom_width"      value="0.015"/>
+  <xacro:property name="odom_y"          value="0.05"/>   <!-- 前後向き計測輪の左右位置(仮) -->
+  <xacro:property name="odom_side_x"     value="-0.06"/>  <!-- 横向き計測輪の前後位置(仮) -->
+  <xacro:property name="lidar_z"         value="0.12"/>   <!-- LiDARの高さ(仮) -->
+  <xacro:property name="PI"              value="3.14159265359"/>
+
+  <material name="body"><color rgba="0.25 0.45 0.85 0.6"/></material>
+  <material name="wheel"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="odom"><color rgba="0.9 0.6 0.1 1.0"/></material>
+  <material name="lidar"><color rgba="0.8 0.1 0.1 1.0"/></material>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.05"/>
+      <geometry><box size="${body_x} ${body_y} 0.04"/></geometry>
+      <material name="body"/>
+    </visual>
+  </link>
+
+  <!--
+    メカナムホイール
+    natto_library の omni 計算に乗せるため、<name>_base_link の向き(yaw)を「ローラー軸の向き」にする。
+    library は command/<name>_base_link の位置と yaw だけを使う。
+    車輪の見た目(<name>_link)は向きを戻して、機体の前後方向に転がるように見せている。
+    roller_yaw の符号: 左前 -45°, 右前 +45°, 左後 +45°, 右後 -45°
+    (ω = (vx ∓ vy ∓ (lx+ly)ωz)/r の一般的なメカナムの式と一致。実機の車輪の左右・取り付け方で逆になるので要確認)
+  -->
+  <xacro:macro name="mecanum" params="name x y roller_yaw">
+    <link name="${name}_base_link"/>
+    <joint name="${name}_base" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}_base_link"/>
+      <origin xyz="${x} ${y} ${mecanum_radius}" rpy="0 0 ${roller_yaw}"/>
+    </joint>
+    <link name="${name}_link">
+      <visual>
+        <origin rpy="${PI/2} 0 0"/>
+        <geometry><cylinder radius="${mecanum_radius}" length="${mecanum_width}"/></geometry>
+        <material name="wheel"/>
+      </visual>
+    </link>
+    <joint name="${name}" type="continuous">
+      <parent link="${name}_base_link"/>
+      <child link="${name}_link"/>
+      <origin rpy="0 0 ${-roller_yaw}"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:mecanum name="mecanum_fl" x="${ wheel_x}" y="${ wheel_y}" roller_yaw="${-PI/4}"/>
+  <xacro:mecanum name="mecanum_fr" x="${ wheel_x}" y="${-wheel_y}" roller_yaw="${ PI/4}"/>
+  <xacro:mecanum name="mecanum_rl" x="${-wheel_x}" y="${ wheel_y}" roller_yaw="${ PI/4}"/>
+  <xacro:mecanum name="mecanum_rr" x="${-wheel_x}" y="${-wheel_y}" roller_yaw="${-PI/4}"/>
+
+  <!--
+    計測輪(オムニホイール、ばねで床に押し付ける)
+    <name>_base_link の yaw = 転がる方向。wheel_radius は実際の半径をそのまま使う。
+  -->
+  <xacro:macro name="odom_wheel" params="name x y yaw">
+    <link name="${name}_base_link"/>
+    <joint name="${name}_base" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}_base_link"/>
+      <origin xyz="${x} ${y} ${odom_radius}" rpy="0 0 ${yaw}"/>
+    </joint>
+    <link name="${name}_link">
+      <visual>
+        <origin rpy="${PI/2} 0 0"/>
+        <geometry><cylinder radius="${odom_radius}" length="${odom_width}"/></geometry>
+        <material name="odom"/>
+      </visual>
+    </link>
+    <joint name="${name}" type="continuous">
+      <parent link="${name}_base_link"/>
+      <child link="${name}_link"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:odom_wheel name="odom_wheel_l" x="0.0"            y="${ odom_y}"      yaw="0.0"/>      <!-- 前後向き 左 -->
+  <xacro:odom_wheel name="odom_wheel_r" x="0.0"            y="${-odom_y}"      yaw="0.0"/>      <!-- 前後向き 右 -->
+  <xacro:odom_wheel name="odom_wheel_s" x="${odom_side_x}" y="0.0"            yaw="${PI/2}"/>  <!-- 横向き -->
+
+  <!-- RPLIDAR A1(sensing のフレーム名は lidar_<lidar.yaml の name>) -->
+  <link name="lidar_front">
+    <visual>
+      <geometry><cylinder radius="0.035" length="0.03"/></geometry>
+      <material name="lidar"/>
+    </visual>
+  </link>
+  <joint name="base_to_lidar_front" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_front"/>
+    <origin xyz="0 0 ${lidar_z}" rpy="0 0 0"/>
+  </joint>
+</robot>

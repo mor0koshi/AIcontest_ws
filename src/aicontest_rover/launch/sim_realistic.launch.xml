@@ -1,0 +1,149 @@
+<!--
+  現実に近いシミュレーション(滑り・計測輪の誤差・A1 に合わせた LiDAR・置き位置の誤差)
+    ros2 launch aicontest_rover sim_realistic.launch.xml
+    ros2 launch aicontest_rover sim_realistic.launch.xml odom_wheels:=2lr
+    ros2 launch aicontest_rover sim_realistic.launch.xml place_error_x:=0.05 place_error_yaw_deg:=5.0
+
+  別の配置で試す(make_map.py / random_course.py の出力フォルダ DIR):
+    ros2 launch aicontest_rover sim_realistic.launch.xml course_dir:=DIR
+
+  スタート位置は course.yaml の start から読む(MCL の初期位置になる)。
+  シミュレーター上のロボットは、そこから place_error_* だけずらして置く(手で置いたときのずれ)。
+
+  natto のシミュレーター部分(launch_simulation)と自己位置推定(launch_localization)は使わず、
+  ここで起動し直して間に sim_realism.py を挟む(natto 本体は変更なし)。
+    - オドメトリは実機と同じく計測輪から(3輪: natto_wheel_odometry、2輪: wheel_odometry_wls.py)
+    - LiDAR シミュレーターを A1 に合わせる(360°、7Hz、1周360点、0.15〜12m)
+      ※ natto の lidar_simulation.launch.py 経由だと周期が 30Hz・前方180°だけになる
+-->
+<launch>
+    <arg name="chassis_type" default="omni"/>
+    <arg name="initial_allow_auto_drive" default="true"/>
+    <arg name="retry_action_on_timeout" default="true"/>
+    <arg name="launch_simulation" default="false"/>
+    <arg name="launch_localization" default="false"/>
+    <arg name="occupancy_grid_resolution" default="0.02"/>
+    <arg name="merged_lidar_publish_frequency" default="10.0"/>
+    <!-- passthrough: スキャンが届いたらすぐ1回だけ流す(merge だと最新の点群を一定周期で出し直すので、古いスキャンが何度も使われ遅れも増える) -->
+    <arg name="merged_lidar_mode" default="passthrough"/>
+    <arg name="use_ransac" default="false"/>
+    <arg name="controller_max_xy_speed_m_s" default="0.5"/>
+    <arg name="controller_max_yaw_speed_rad_s" default="1.5"/>
+
+    <arg name="pkg" default="$(find-pkg-share aicontest_rover)"/>
+    <arg name="tools" default="$(find-pkg-prefix aicontest_rover)/lib/aicontest_rover"/>
+
+    <!-- 配置(course.yaml・地図・ルート)。course_dir を指定すると、そのフォルダのものを使う -->
+    <arg name="course_dir" default=""/>
+    <let name="map_dir" value="$(var pkg)/config/map" if="$(eval '\'$(var course_dir)\' == \'\'')"/>
+    <let name="map_dir" value="$(var course_dir)" unless="$(eval '\'$(var course_dir)\' == \'\'')"/>
+    <let name="route_path" value="$(var pkg)/state_graph/course.md" if="$(eval '\'$(var course_dir)\' == \'\'')"/>
+    <let name="route_path" value="$(var course_dir)/course.md" unless="$(eval '\'$(var course_dir)\' == \'\'')"/>
+
+    <!--
+      本当の世界(LiDAR シミュレーターが見る椅子・コーン・壁)。既定はロボットに渡す地図と同じ。
+      world_dir を別のフォルダにすると「人が測って入力した配置(course_dir)」と「本当の配置(world_dir)」をずらせる
+      (椅子の位置を測り間違えたときの試験。sim_campaign.py が作る)
+    -->
+    <arg name="world_dir" default=""/>
+    <let name="world_map_topic" value="/common/map" if="$(eval '\'$(var world_dir)\' == \'\'')"/>
+    <let name="world_map_topic" value="/simulation/world_map" unless="$(eval '\'$(var world_dir)\' == \'\'')"/>
+
+    <!-- スタート位置(course.yaml)と、置き位置の誤差 -->
+    <arg name="start_x" default="$(command '$(var tools)/course_value.py $(var map_dir)/course.yaml start.x')"/>
+    <arg name="start_y" default="$(command '$(var tools)/course_value.py $(var map_dir)/course.yaml start.y')"/>
+    <arg name="start_yaw_deg" default="$(command '$(var tools)/course_value.py $(var map_dir)/course.yaml start.yaw 0')"/>
+    <arg name="place_error_x" default="0.03"/>
+    <arg name="place_error_y" default="-0.02"/>
+    <arg name="place_error_yaw_deg" default="2.0"/>
+
+    <!-- 計測輪の構成: 3 / 2lr(前後向きを左右に2つ)/ 2fs(前後向き1 + 横向き1) -->
+    <arg name="odom_wheels" default="2fs"/>
+    <!-- 既定は計測輪2つ(前後1 + 横1)+ IMU。計測輪3つなら odom_wheels:=3 use_imu:=false -->
+    <arg name="use_imu" default="true"/>
+    <let name="odom_wheel_list" value="['odom_wheel_l', 'odom_wheel_r', 'odom_wheel_s']" if="$(eval '\'$(var odom_wheels)\' == \'3\'')"/>
+    <let name="odom_wheel_list" value="['odom_wheel_l', 'odom_wheel_r']" if="$(eval '\'$(var odom_wheels)\' == \'2lr\'')"/>
+    <let name="odom_wheel_list" value="['odom_wheel_l', 'odom_wheel_s']" if="$(eval '\'$(var odom_wheels)\' == \'2fs\'')"/>
+
+    <arg name="urdf_path" default="$(var pkg)/urdf/rover.urdf.xacro"/>
+    <arg name="chassis_param_path" default="$(var pkg)/config/chassis/mecanum.yaml"/>
+    <arg name="simulation_param_path" default="$(var pkg)/config/chassis/mecanum_simulation.yaml"/>
+    <arg name="line_segments_path" default="$(var map_dir)/line_segments.csv"/>
+    <arg name="circles_path" default="$(var map_dir)/circles.csv"/>
+    <arg name="footprint_param_path" default="$(var pkg)/config/footprint.yaml"/>
+    <arg name="lidar_param_path" default="$(var pkg)/config/lidar.yaml"/>
+    <arg name="localization_param_path" default="$(var pkg)/config/localization_real.yaml"/>
+    <arg name="planning_param_path" default="$(var pkg)/config/planning.yaml"/>
+    <arg name="control_param_path" default="$(var pkg)/config/control.yaml"/>
+    <arg name="controller_param_path" default="$(var pkg)/config/controller.yaml"/>
+    <arg name="joint_rule_path" default="$(var pkg)/config/joint_rule.yaml"/>
+    <arg name="state_graph_path" default="$(var route_path)"/>
+    <arg name="realism_param_path" default="$(var pkg)/config/sim_realism.yaml"/>
+
+    <!-- 1つ目は zone_speed_limiter.py が椅子の周りで速度を落とした後の指令 -->
+    <arg name="joint_state_topics" default="['/$(var chassis_type)/command_joint_states_limited', '/controller/joint_states', '/behavior/command_joint_states']"/>
+
+    <node_container pkg="rclcpp_components" exec="component_container" name="simulation_container" namespace="/simulation">
+        <!-- ロボットの動き(滑りを入れた後の指令で動く。真の位置を /simulation/pose に出す) -->
+        <composable_node pkg="natto_simple_simulation" plugin="joint_state_simulator::joint_state_simulator" name="joint_state_simulator" namespace="/simulation">
+            <param from="$(var simulation_param_path)"/>
+            <param from="$(var chassis_param_path)"/>
+            <param name="initial_pose_x" value="$(eval '$(var start_x) + $(var place_error_x)')"/>
+            <param name="initial_pose_y" value="$(eval '$(var start_y) + $(var place_error_y)')"/>
+            <param name="initial_pose_yaw_deg" value="$(eval '$(var start_yaw_deg) + $(var place_error_yaw_deg)')"/>
+            <param name="simulation_frame_id" value="simulation"/>
+            <remap from="joint_states" to="/simulation/drive_joint_states"/>
+            <remap from="command_joint_states" to="/simulation/command_joint_states"/>
+            <remap from="origin_status" to="/origin_status"/>
+            <remap from="simulation_pose" to="/simulation/pose"/>
+        </composable_node>
+
+        <!-- RPLIDAR A1 相当(位置は config/lidar.yaml と合わせる) -->
+        <composable_node pkg="natto_simple_simulation" plugin="lidar_simulator::lidar_simulator" name="front" namespace="/simulation/lidar">
+            <param name="position_x" value="0.0"/>
+            <param name="position_y" value="0.0"/>
+            <param name="position_z" value="0.12"/>
+            <param name="angle_deg" value="0.0"/>
+            <param name="angle_min" value="-3.14159265"/>
+            <param name="angle_max" value="3.14159265"/>
+            <param name="frequency" value="7.0"/>
+            <param name="point_rate" value="2520"/>
+            <param name="range_min" value="0.15"/>
+            <param name="range_max" value="12.0"/>
+            <param name="simulation_resolution" value="0.01"/>
+            <param name="frame_id" value="lidar_front"/>
+            <remap from="simulation_pose" to="/simulation/pose"/>
+            <remap from="map" to="$(var world_map_topic)"/>
+            <remap from="laserscan" to="/simulation/lidar/front_raw"/>
+        </composable_node>
+
+        <!-- 本当の世界の地図(world_dir を指定したときだけ) -->
+        <composable_node pkg="natto_map" plugin="map_loader::map_loader" name="world_map_loader" namespace="/simulation" if="$(eval '\'$(var world_dir)\' != \'\'')">
+            <param name="line_segments_path" value="$(var world_dir)/line_segments.csv"/>
+            <param name="circles_path" value="$(var world_dir)/circles.csv"/>
+            <param name="reverse_y" value="false"/>
+            <param name="reverse_y_offset" value="0.0"/>
+            <remap from="map" to="/simulation/world_map"/>
+        </composable_node>
+    </node_container>
+
+    <!-- 滑り・計測輪・LiDAR の誤差 -->
+    <node pkg="aicontest_rover" exec="sim_realism.py" name="sim_realism" output="screen">
+        <param from="$(var realism_param_path)"/>
+        <param name="odom_wheel_names" value="$(var odom_wheel_list)"/>
+    </node>
+
+    <!-- 自己位置推定(スタート位置を初期位置に) -->
+    <include file="$(var pkg)/launch/localization.launch.xml">
+        <arg name="localization_param_path" value="$(var localization_param_path)"/>
+        <arg name="chassis_param_path" value="$(var chassis_param_path)"/>
+        <arg name="start_x" value="$(var start_x)"/>
+        <arg name="start_y" value="$(var start_y)"/>
+        <arg name="start_yaw_deg" value="$(var start_yaw_deg)"/>
+        <arg name="odom_wheels" value="$(var odom_wheels)"/>
+        <arg name="use_imu" value="$(var use_imu)"/>
+        <arg name="course_path" value="$(var map_dir)/course.yaml"/>
+    </include>
+
+    <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml"/>
+</launch>

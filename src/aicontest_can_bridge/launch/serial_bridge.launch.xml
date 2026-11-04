@@ -1,0 +1,18 @@
+<!--
+  変換ノード(UART 版)単体の起動
+    ros2 launch aicontest_can_bridge serial_bridge.launch.xml                          # 実機(/dev/nucleo)
+    ros2 launch aicontest_can_bridge serial_bridge.launch.xml port:=/dev/ttyACM0
+    ros2 launch aicontest_can_bridge serial_bridge.launch.xml port:=/tmp/fake_nucleo   # PC でのテスト(fake_nucleo_serial.py)
+-->
+<launch>
+    <arg name="port" default="/dev/nucleo"/>
+    <arg name="param_path" default="$(find-pkg-share aicontest_can_bridge)/config/serial_bridge.yaml"/>
+
+    <node pkg="aicontest_can_bridge" exec="serial_bridge_node" name="serial_bridge" output="screen">
+        <param from="$(var param_path)"/>
+        <param name="port" value="$(var port)"/>
+        <remap from="command_joint_states" to="/command_joint_states"/>
+        <remap from="joint_states" to="/joint_states"/>
+        <remap from="imu" to="/imu"/>
+    </node>
+</launch>

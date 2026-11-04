@@ -1,0 +1,19 @@
+# ビルドで作られるもの
+build/
+install/
+log/
+__pycache__/
+*.pyc
+
+# natto_library は Pi のセットアップ(tools/setup_pi5.sh ws)が本家から clone する
+src/natto_library/
+
+# 大きい・その場かぎりのもの
+sim_results/
+course_today/
+.vscode/
+
+# 主催者の資料(案)のまとめ。公開リポジトリには入れない
+contest_rules.md
+# natto_library のチーム内メモ(公開しない)
+docs/natto_issues.md

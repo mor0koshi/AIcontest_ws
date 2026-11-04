@@ -1,0 +1,24 @@
+<!--
+  開発PCで、Pi の上で走っている real.launch.xml の様子を RViz で見る
+    ros2 launch aicontest_rover monitor.launch.xml
+
+  Pi と同じネットワーク・同じ ROS_DOMAIN_ID にしておく(docs/pi5_setup.md 5)。
+  起動するのは natto の表示用ノード(地図・経路・車輪の矢印を Marker にする)と RViz だけ。
+  走行に使うノードは起動しないので、Pi と同時に動かしても指令は二重にならない。
+-->
+<launch>
+    <arg name="chassis_type" default="omni"/>
+    <arg name="fps" default="10.0"/>
+    <arg name="pkg" default="$(find-pkg-share aicontest_rover)"/>
+    <arg name="chassis_param_path" default="$(var pkg)/config/chassis/mecanum.yaml"/>
+
+    <arg name="launch_behavior" default="false"/>
+    <arg name="launch_common" default="false"/>
+    <arg name="launch_simulation" default="false"/>
+    <arg name="launch_sensing" default="false"/>
+    <arg name="launch_localization" default="false"/>
+    <arg name="launch_control" default="false"/>
+    <arg name="launch_visualization" default="true"/>
+
+    <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml"/>
+</launch>

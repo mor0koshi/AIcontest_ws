@@ -1,0 +1,23 @@
+<!--
+  シミュレーション(誤差なし)
+    ros2 launch aicontest_rover sim.launch.xml
+    ros2 launch aicontest_rover sim.launch.xml course_dir:=DIR    # 別の配置
+
+  中身は sim_realistic.launch.xml を「滑りなし・誤差なし・置き位置ぴったり」で起動するだけ。
+  現実に近い条件で試すときは sim_realistic.launch.xml を使う。
+-->
+<launch>
+    <arg name="course_dir" default=""/>
+    <arg name="odom_wheels" default="2fs"/>
+    <arg name="launch_visualization" default="true"/>
+
+    <include file="$(find-pkg-share aicontest_rover)/launch/sim_realistic.launch.xml">
+        <arg name="realism_param_path" value="$(find-pkg-share aicontest_rover)/config/sim_ideal.yaml"/>
+        <arg name="place_error_x" value="0.0"/>
+        <arg name="place_error_y" value="0.0"/>
+        <arg name="place_error_yaw_deg" value="0.0"/>
+        <arg name="course_dir" value="$(var course_dir)"/>
+        <arg name="odom_wheels" value="$(var odom_wheels)"/>
+        <arg name="launch_visualization" value="$(var launch_visualization)"/>
+    </include>
+</launch>

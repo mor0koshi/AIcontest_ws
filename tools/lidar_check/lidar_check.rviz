@@ -1,0 +1,60 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid (0.5m)
+      Enabled: true
+      Cell Size: 0.5
+      Plane Cell Count: 24
+      Reference Frame: <Fixed Frame>
+      Color: 160; 160; 164
+      Alpha: 0.5
+    - Class: rviz_default_plugins/Axes
+      Name: LiDAR (red = 0deg front)
+      Enabled: true
+      Reference Frame: lidar_front
+      Length: 0.3
+      Radius: 0.02
+    - Class: rviz_default_plugins/LaserScan
+      Name: Scan
+      Enabled: true
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (Pixels): 4
+      Size (m): 0.02
+      Color Transformer: FlatColor
+      Color: 0; 255; 120
+      Decay Time: 0
+      Queue Size: 10
+  Enabled: true
+  Global Options:
+    Background Color: 30; 30; 34
+    Fixed Frame: lidar_front
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 255; 220; 0
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      Angle: 0
+      Scale: 120
+      X: 0
+      Y: 0
+      Target Frame: <Fixed Frame>
+    Saved: ~
+Window Geometry:
+  Width: 1200
+  Height: 800

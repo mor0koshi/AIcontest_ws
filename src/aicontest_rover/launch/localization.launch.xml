@@ -1,0 +1,83 @@
+<!--
+  自己位置推定(natto_mcl)+ オドメトリ。natto の localization.launch.xml の代わり。
+  呼び出し側で launch_localization:=false にしてから include する。
+  natto の版との違い:
+    - スタート位置(course.yaml の start)を MCL の初期位置に入れる
+    - 計測輪2つのときは自作オドメトリ(wheel_odometry_wls.py)を使う(natto_wheel_odometry は3輪以上が必要)
+-->
+<launch>
+    <arg name="localization_param_path"/>
+    <arg name="chassis_param_path"/>
+    <arg name="start_x"/>
+    <arg name="start_y"/>
+    <arg name="start_yaw_deg"/>
+    <!-- 3 / 2lr(前後向きを左右に2つ)/ 2fs(前後向き1 + 横向き1) -->
+    <arg name="odom_wheels" default="3"/>
+    <arg name="odom_wheel_radius" default="0.024"/>
+    <arg name="drive_weight" default="0.05"/>
+    <!-- true: 旋回の速さに IMU のジャイロ(/imu)を使う(計測輪2つのときの自作オドメトリだけ) -->
+    <arg name="use_imu" default="false"/>
+    <!-- true: MCL の位置にオドメトリで進んだ分を足して、高い頻度で /localization/current_pose を出す(pose_extrapolator.py) -->
+    <arg name="extrapolate_pose" default="true"/>
+    <!-- true: 椅子の入口で止まったときに脚を測って、通り抜けるあいだ自己位置を補正する(chair_aligner.py、extrapolate_pose が必要) -->
+    <arg name="chair_align" default="true"/>
+    <!-- true: 補正中(入口の手前 → 出口)は MCL の更新を使わず、補正した位置 + オドメトリで進む(IMU で向きが正確なとき向け) -->
+    <arg name="hold_mcl_during_correction" default="false"/>
+    <arg name="course_path" default=""/>
+    <!-- 椅子の中心から chair_zone_radius 以内では、機体の速さを chair_slow_speed 以下にする(zone_speed_limiter.py) -->
+    <arg name="chair_slow_speed" default="0.15"/>
+    <arg name="chair_zone_radius" default="0.45"/>
+
+    <let name="mcl_pose_topic" value="/localization/mcl_pose" if="$(var extrapolate_pose)"/>
+    <let name="mcl_pose_topic" value="/localization/current_pose" unless="$(var extrapolate_pose)"/>
+    <let name="odom_wheel_list" value="['odom_wheel_l', 'odom_wheel_r']" if="$(eval '\'$(var odom_wheels)\' == \'2lr\'')"/>
+    <let name="odom_wheel_list" value="['odom_wheel_l', 'odom_wheel_s']" if="$(eval '\'$(var odom_wheels)\' == \'2fs\'')"/>
+
+    <node_container pkg="rclcpp_components" exec="component_container" name="localization_container" namespace="localization">
+        <!-- 計測輪3つ: natto のオドメトリ(localization_real.yaml で計測輪に上書き済み) -->
+        <composable_node pkg="natto_wheel_odometry" plugin="wheel_odometry::wheel_odometry" name="wheel_odometry" namespace="localization/wheel_odometry" if="$(eval '\'$(var odom_wheels)\' == \'3\'')">
+            <param from="$(var chassis_param_path)"/>
+            <param from="$(var localization_param_path)"/>
+            <param name="publish_tf" value="false"/>
+            <remap from="joint_states" to="/joint_states"/>
+        </composable_node>
+
+        <composable_node pkg="natto_mcl" plugin="mcl::mcl" name="mcl" namespace="localization/mcl">
+            <param from="$(var localization_param_path)"/>
+            <param name="initial_pose_x" value="$(var start_x)"/>
+            <param name="initial_pose_y" value="$(var start_y)"/>
+            <param name="initial_pose_yaw_deg" value="$(var start_yaw_deg)"/>
+            <param name="use_odom_tf" value="false"/>
+            <param name="reverse_y" value="false"/>
+            <param name="reverse_y_offset" value="0.0"/>
+            <remap from="occupancy_grid" to="/common/occupancy_grid"/>
+            <remap from="pointcloud2" to="/sensing/lidar/pointcloud2/merged"/>
+            <remap from="initial_pose" to="/initialpose"/>
+            <remap from="pose" to="$(var mcl_pose_topic)"/>
+            <remap from="odometry" to="/localization/wheel_odometry/odometry"/>
+        </composable_node>
+    </node_container>
+
+    <node pkg="aicontest_rover" exec="pose_extrapolator.py" name="pose_extrapolator" output="screen" if="$(var extrapolate_pose)">
+        <param name="hold_mcl_during_correction" value="$(var hold_mcl_during_correction)"/>
+    </node>
+    <node pkg="aicontest_rover" exec="chair_aligner.py" name="chair_aligner" output="screen" if="$(eval '\'$(var chair_align)\' == \'true\' and \'$(var extrapolate_pose)\' == \'true\'')">
+        <param name="course_path" value="$(var course_path)"/>
+    </node>
+
+    <!-- 椅子の周りだけ遅くする: /omni/command_joint_states → /omni/command_joint_states_limited(joint_state_topics で使う) -->
+    <node pkg="aicontest_rover" exec="zone_speed_limiter.py" name="zone_speed_limiter" output="screen">
+        <param name="course_path" value="$(var course_path)"/>
+        <param name="slow_speed" value="$(var chair_slow_speed)"/>
+        <param name="zone_radius" value="$(var chair_zone_radius)"/>
+    </node>
+
+    <!-- 計測輪2つ: 自作オドメトリ -->
+    <node pkg="aicontest_rover" exec="wheel_odometry_wls.py" name="wheel_odometry" namespace="localization/wheel_odometry" output="screen" unless="$(eval '\'$(var odom_wheels)\' == \'3\'')">
+        <param name="odom_wheel_names" value="$(var odom_wheel_list)"/>
+        <param name="odom_wheel_radius" value="$(var odom_wheel_radius)"/>
+        <param name="drive_weight" value="$(var drive_weight)"/>
+        <param name="use_gyro" value="$(var use_imu)"/>
+        <remap from="joint_states" to="/joint_states"/>
+    </node>
+</launch>

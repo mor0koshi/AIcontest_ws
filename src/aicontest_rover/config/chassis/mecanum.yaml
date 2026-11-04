@@ -1,0 +1,9 @@
+# メカナム4輪を natto_library の omni 計算で扱う
+# wheel_radius = 実際の半径 / √2(メカナム直径60mm → 0.03 / 1.41421 = 0.0212132)
+# 各車輪の yaw(ローラー軸の向き)は urdf/rover.urdf.xacro で設定している
+/**:
+  ros__parameters:
+    chassis_type: "omni"
+    wheel_radius: 0.0212132
+    wheel_names: ["mecanum_fl", "mecanum_fr", "mecanum_rl", "mecanum_rr"]
+    wheel_base_names: ["mecanum_fl_base", "mecanum_fr_base", "mecanum_rl_base", "mecanum_rr_base"]

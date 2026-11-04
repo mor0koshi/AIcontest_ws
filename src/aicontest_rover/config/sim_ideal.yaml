@@ -1,0 +1,22 @@
+# sim.launch.xml 用: 誤差なし(滑りなし・計測輪の誤差なし・LiDAR の追加ノイズなし)
+/**:
+  ros__parameters:
+    slip_efficiency_x: 1.0
+    slip_efficiency_y: 1.0
+    slip_efficiency_yaw: 1.0
+    slip_fluctuation: 0.0
+    cross_drift: 0.0
+    odom_scale_error: [0.0, 0.0, 0.0]
+    odom_noise_rad_s: 0.0
+    odom_skip_per_sec: 0.0
+    odom_skip_duration: 0.0
+    lidar_noise_m: 0.0
+    lidar_dropout: 0.0
+    lidar_range_min: 0.15
+    # IMU(ジャイロの z 軸)
+    gyro_bias_deg_s: 0.0           # 最初のずれ(校正前)。安い MEMS で 0.1〜1°/s 程度
+    gyro_bias_walk_deg_s: 0.0     # ずれが 1秒あたり変わる量
+    gyro_noise_deg_s: 0.0          # 1サンプル(約100Hz)のノイズ
+    gyro_scale_error: 0.0        # 倍率の誤差
+
+    seed: 0

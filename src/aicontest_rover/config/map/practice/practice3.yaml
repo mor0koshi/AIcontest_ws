@@ -1,0 +1,63 @@
+# 練習用の配置 3(ランダム、seed 503)。tools/contest_prepare.sh /home/fukui-ros/AIcontest_ws/src/aicontest_rover/config/map/practice/practice3.yaml --sim で地図・ルート・シミュレーションまで通しで練習できる
+field:
+  width: 5.0
+  height: 4.0
+  wall_height: 0.3
+start:
+  x: 1.052
+  y: 1.503
+  yaw: -110.8
+goal:
+  x: 2.15
+  y: 2.0
+  yaw: 0
+cone:
+  x: 2.5
+  y: 2.0
+  radius: 0.1
+crater_radius: 0.21
+crater_margin: 0.06
+craters:
+- - 1.706
+  - 3.262
+- - 0.479
+  - 2.922
+chair:
+  inner_x: 0.31
+  inner_y: 0.31
+  leg_size: 0.02
+pass_distance: 0.35
+allow_backward: true
+entry_wait_sec: 1.5
+drive_mode: forward
+turn_penalty: 0.1
+auto_route: true
+lateral_weight: 1.5
+rotation_weight: 0.25
+clearance_margin: 0.03
+travel_margin: 0.05
+chairs:
+- x: 3.319
+  y: 0.54
+  yaw: 3.1
+- x: 2.735
+  y: 3.233
+  yaw: 37.8
+- x: 4.508
+  y: 2.443
+  yaw: 33.6
+- x: 3.537
+  y: 2.301
+  yaw: 42.6
+- x: 4.05
+  y: 0.869
+  yaw: 74.3
+- x: 0.719
+  y: 0.499
+  yaw: 76.8
+- x: 1.66
+  y: 2.11
+  yaw: 80.8
+- x: 3.615
+  y: 3.117
+  yaw: 50.2
